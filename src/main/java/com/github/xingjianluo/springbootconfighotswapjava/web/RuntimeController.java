@@ -30,7 +30,11 @@ public class RuntimeController {
         this.runtime = runtime;
     }
 
-    /** 状态可观测：当前生效版本、生效时间、配置、扩展与最近一次失败原因。 */
+    /**
+     * 状态可观测：当前生效版本、生效时间、生效配置、已注册扩展、最近一次失败原因，
+     * 以及分层状态——每个来源层当前保存的账本内容（layers）和每个配置项最终采用的
+     * 来源层（provenance）。三者与版本号同属一个不可变快照，不会读到中间状态。
+     */
     @GetMapping("/status")
     public Map<String, Object> status() {
         RuntimeSnapshot snap = runtime.current();
@@ -39,6 +43,8 @@ public class RuntimeController {
         body.put("effectiveAt", snap.effectiveAt().toString());
         body.put("config", snap.config());
         body.put("extensions", snap.extensions().keySet());
+        body.put("layers", snap.layers());
+        body.put("provenance", snap.provenance());
         body.put("lastFailureReason", runtime.lastFailureReason().orElse(null));
         return body;
     }
@@ -55,6 +61,10 @@ public class RuntimeController {
     /**
      * 触发热更新。请求体为层名到键值对的映射，例如：
      * {"RUNTIME_INJECTION": {"greeting.prefix": "Hi", "greeting.impl": "formal"}}
+     *
+     * <p>语义：只替换本次提交的层，其余层保持上次保存的内容；某层提交空对象
+     * （如 {"EXTERNAL_FILE": {}}）表示清空该层；BUILTIN_DEFAULT 层为出厂基线，
+     * 提交即被拒绝（BUILTIN_LAYER_READONLY）。</p>
      */
     @PostMapping("/config")
     public ResponseEntity<Map<String, Object>> update(@RequestBody Map<String, Map<String, String>> layerBody) {

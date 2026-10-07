@@ -64,4 +64,55 @@ class RuntimeControllerTest {
         assertEquals(v0.longValue() + 1, ((Number) status1.getBody().get("version")).longValue(), "失败后版本不得前进");
         assertTrue(((String) status1.getBody().get("lastFailureReason")).contains("ILLEGAL_VALUE"));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    @org.springframework.test.annotation.DirtiesContext(
+            methodMode = org.springframework.test.annotation.DirtiesContext.MethodMode.BEFORE_METHOD)
+    void layeredStatusClearAndBuiltinReadOnly() {
+        // 1. 初始状态即包含分层账本与来源说明
+        ResponseEntity<Map> status0 = rest.getForEntity("/runtime/status", Map.class);
+        log.info("初始状态: {}", status0.getBody());
+        Map<String, Object> layers0 = (Map<String, Object>) status0.getBody().get("layers");
+        Map<String, Object> provenance0 = (Map<String, Object>) status0.getBody().get("provenance");
+        assertNotNull(layers0, "状态必须暴露各来源层账本");
+        assertNotNull(provenance0, "状态必须暴露每个配置项的来源层");
+        assertTrue(layers0.containsKey("BUILTIN_DEFAULT"));
+        assertEquals("BUILTIN_DEFAULT", provenance0.get("greeting.prefix"));
+
+        // 2. 注入层高优先写入后，来源说明切换
+        Map<String, Map<String, String>> req = Map.of(
+                "RUNTIME_INJECTION", Map.of("greeting.prefix", "Injected"));
+        log.info("热更新请求: {} 判定依据=provenance.greeting.prefix 变为 RUNTIME_INJECTION", req);
+        rest.postForEntity("/runtime/config", req, Map.class);
+        ResponseEntity<Map> status1 = rest.getForEntity("/runtime/status", Map.class);
+        log.info("注入后状态: {}", status1.getBody());
+        assertEquals("RUNTIME_INJECTION",
+                ((Map<String, Object>) status1.getBody().get("provenance")).get("greeting.prefix"));
+
+        // 3. 清空注入层（空对象）-> 回退内置默认，账本为空
+        Map<String, Map<String, String>> clearReq = Map.of("RUNTIME_INJECTION", Map.of());
+        log.info("清空请求: {} 判定依据=prefix 回退 Hello 且 RUNTIME_INJECTION 账本为空", clearReq);
+        ResponseEntity<Map> cleared = rest.postForEntity("/runtime/config", clearReq, Map.class);
+        assertEquals(HttpStatus.OK, cleared.getStatusCode());
+        ResponseEntity<Map> status2 = rest.getForEntity("/runtime/status", Map.class);
+        log.info("清空后状态: {}", status2.getBody());
+        Map<String, Object> layers2 = (Map<String, Object>) status2.getBody().get("layers");
+        assertEquals("Hello", ((Map<String, Object>) status2.getBody().get("config")).get("greetingPrefix"));
+        assertEquals("BUILTIN_DEFAULT",
+                ((Map<String, Object>) status2.getBody().get("provenance")).get("greeting.prefix"));
+        assertEquals(Map.of(), layers2.get("RUNTIME_INJECTION"));
+
+        // 4. 尝试改写内置默认层 -> 422 且原因可区分
+        Map<String, Map<String, String>> hackReq = Map.of(
+                "BUILTIN_DEFAULT", Map.of("greeting.prefix", "Hacked"));
+        log.info("改写内置层请求: {} 判定依据=422 且 failureReasons 含 BUILTIN_LAYER_READONLY", hackReq);
+        ResponseEntity<Map> rejected = rest.postForEntity("/runtime/config", hackReq, Map.class);
+        log.info("改写内置层响应: {}", rejected.getBody());
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, rejected.getStatusCode());
+        assertTrue(rejected.getBody().get("failureReasons").toString().contains("BUILTIN_LAYER_READONLY"));
+        ResponseEntity<Map> status3 = rest.getForEntity("/runtime/status", Map.class);
+        assertEquals(((Number) status2.getBody().get("version")).longValue(),
+                ((Number) status3.getBody().get("version")).longValue(), "被拒绝后版本不得前进");
+    }
 }

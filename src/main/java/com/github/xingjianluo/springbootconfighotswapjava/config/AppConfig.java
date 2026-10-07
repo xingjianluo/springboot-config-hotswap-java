@@ -15,21 +15,4 @@ public record AppConfig(
         int maxConnections,
         boolean featureXEnabled,
         String greetingImpl) {
-
-    public static AppConfig empty() {
-        return new AppConfig(0, "", 0, false, "");
-    }
-
-    /**
-     * 导出为键值形式，作为下一次部分更新的基底层，保证未提及的字段沿用当前生效值。
-     */
-    public java.util.Map<String, String> asMap() {
-        java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
-        m.put(ConfigAssembler.KEY_SCHEMA_VERSION, String.valueOf(schemaVersion));
-        m.put(ConfigAssembler.KEY_GREETING_PREFIX, greetingPrefix);
-        m.put(ConfigAssembler.KEY_MAX_CONNECTIONS, String.valueOf(maxConnections));
-        m.put(ConfigAssembler.KEY_FEATURE_X_ENABLED, String.valueOf(featureXEnabled));
-        m.put(ConfigAssembler.KEY_GREETING_IMPL, greetingImpl);
-        return m;
-    }
 }
