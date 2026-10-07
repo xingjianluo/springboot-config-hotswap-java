@@ -11,5 +11,7 @@ public enum IssueKind {
     /** 必填字段缺失（拒绝） */
     MISSING_REQUIRED,
     /** 旧版本键名被别名兼容（告警） */
-    LEGACY_KEY_ALIAS
+    LEGACY_KEY_ALIAS,
+    /** 试图通过运行时请求改写内置默认层（拒绝：内置默认是出厂基线，只读） */
+    BUILTIN_LAYER_READONLY
 }

@@ -64,4 +64,48 @@ class RuntimeControllerTest {
         assertEquals(v0.longValue() + 1, ((Number) status1.getBody().get("version")).longValue(), "失败后版本不得前进");
         assertTrue(((String) status1.getBody().get("lastFailureReason")).contains("ILLEGAL_VALUE"));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void clearLayerAndLayeredStatusAreObservable() {
+        // 1. 运行时注入一层配置，状态里应能看到该层账本与逐项来源
+        Map<String, Map<String, String>> req = Map.of(
+                "RUNTIME_INJECTION", Map.of("greeting.prefix", "Layered"));
+        ResponseEntity<Map> updated = rest.postForEntity("/runtime/config", req, Map.class);
+        log.info("用例=清空与分层状态可观测 输入={} 响应={} 判定依据=status 中 layers/effectiveSources 与生效值对得上",
+                req, updated.getBody());
+        assertEquals(HttpStatus.OK, updated.getStatusCode());
+
+        ResponseEntity<Map> status1 = rest.getForEntity("/runtime/status", Map.class);
+        Map<String, Map<String, String>> layers1 = (Map<String, Map<String, String>>) status1.getBody().get("layers");
+        Map<String, String> sources1 = (Map<String, String>) status1.getBody().get("effectiveSources");
+        log.info("注入后状态: layers={} effectiveSources={}", layers1, sources1);
+        assertEquals("Layered", layers1.get("RUNTIME_INJECTION").get("greeting.prefix"));
+        assertEquals("RUNTIME_INJECTION", sources1.get("greeting.prefix"));
+
+        // 2. 空对象=显式清空该层：最终值回退到低优先来源（此处为内置默认）
+        Map<String, Map<String, String>> clearReq = Map.of("RUNTIME_INJECTION", Map.of());
+        ResponseEntity<Map> cleared = rest.postForEntity("/runtime/config", clearReq, Map.class);
+        log.info("清空请求: {} 响应={} 判定依据=prefix 回退为内置默认 Hello 且来源变为 BUILTIN_DEFAULT",
+                clearReq, cleared.getBody());
+        assertEquals(HttpStatus.OK, cleared.getStatusCode());
+
+        ResponseEntity<Map> status2 = rest.getForEntity("/runtime/status", Map.class);
+        Map<String, Map<String, String>> layers2 = (Map<String, Map<String, String>>) status2.getBody().get("layers");
+        Map<String, String> sources2 = (Map<String, String>) status2.getBody().get("effectiveSources");
+        Map<String, Object> config2 = (Map<String, Object>) status2.getBody().get("config");
+        log.info("清空后状态: layers={} effectiveSources={} config={}", layers2, sources2, config2);
+        assertTrue(layers2.get("RUNTIME_INJECTION").isEmpty(), "清空后该层账本应为空");
+        assertEquals("Hello", config2.get("greetingPrefix"));
+        assertEquals("BUILTIN_DEFAULT", sources2.get("greeting.prefix"));
+
+        // 3. 内置默认层只读：提交该层被 422 拒绝，原因可区分
+        Map<String, Map<String, String>> builtinReq = Map.of(
+                "BUILTIN_DEFAULT", Map.of("greeting.prefix", "Hacked"));
+        ResponseEntity<Map> denied = rest.postForEntity("/runtime/config", builtinReq, Map.class);
+        log.info("改写内置层请求: {} 响应={} 判定依据=422 且 failureReasons 含 BUILTIN_LAYER_READONLY",
+                builtinReq, denied.getBody());
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, denied.getStatusCode());
+        assertTrue(denied.getBody().get("failureReasons").toString().contains("BUILTIN_LAYER_READONLY"));
+    }
 }

@@ -6,6 +6,7 @@ package com.github.xingjianluo.springbootconfighotswapjava.config;
 public record ConfigIssue(String key, ConfigLayer layer, IssueKind kind, String message) {
 
     public boolean isFatal() {
-        return kind == IssueKind.ILLEGAL_VALUE || kind == IssueKind.MISSING_REQUIRED;
+        return kind == IssueKind.ILLEGAL_VALUE || kind == IssueKind.MISSING_REQUIRED
+                || kind == IssueKind.BUILTIN_LAYER_READONLY;
     }
 }

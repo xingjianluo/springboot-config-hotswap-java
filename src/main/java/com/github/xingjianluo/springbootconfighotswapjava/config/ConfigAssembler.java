@@ -43,8 +43,12 @@ public class ConfigAssembler {
 
     /**
      * 合并结果：存在致命问题时 {@code config} 为 null；问题列表始终完整给出。
+     *
+     * @param provenance 合并后每个出现过的键的取值来源层（高层覆盖低层后的胜出者），
+     *                   用于状态查询时解释每个配置项最终采用了哪个来源的值
      */
-    public record AssembleResult(AppConfig config, List<ConfigIssue> issues) {
+    public record AssembleResult(AppConfig config, List<ConfigIssue> issues,
+                                 Map<String, ConfigLayer> provenance) {
         public boolean hasFatal() {
             return issues.stream().anyMatch(ConfigIssue::isFatal);
         }
@@ -120,11 +124,11 @@ public class ConfigAssembler {
         // 5. 存在致命问题则整体拒绝
         boolean fatal = issues.stream().anyMatch(ConfigIssue::isFatal);
         if (fatal) {
-            return new AssembleResult(null, List.copyOf(issues));
+            return new AssembleResult(null, List.copyOf(issues), Map.copyOf(provenance));
         }
         AppConfig config = new AppConfig(schemaVersion, greetingPrefix, maxConnections,
                 featureX != null && featureX, greetingImpl);
-        return new AssembleResult(config, List.copyOf(issues));
+        return new AssembleResult(config, List.copyOf(issues), Map.copyOf(provenance));
     }
 
     private Integer parseInt(Map<String, String> merged, Map<String, ConfigLayer> provenance,
